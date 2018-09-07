@@ -155,19 +155,21 @@ Utility Functions
 
 ``parse_simple_index(html, base_url=None, from_encoding=None)``
    Parse a simple repository's index page and return a generator of ``(project
-   name, project URL)`` pairs.  ``html`` is a `str` or `bytes` value to parse.
-   ``base_url`` is an optional URL (usually the URL of the page being parsed)
-   to join to the front of the URLs returned.  ``from_encoding`` is an optional
-   hint to Beautiful Soup as to the encoding of ``html``.
+   name, project URL)`` pairs.  ``html`` is a `str`, `bytes`, iterable of
+   `str`, or iterable of `bytes` to parse.  ``base_url`` is an optional URL
+   (usually the URL of the page being parsed) to join to the front of the URLs
+   returned.  ``from_encoding`` is the encoding of ``html`` if it is `bytes` or
+   an iterable of `bytes`.
 
 ``parse_project_page(html, base_url=None, from_encoding=None, project_hint=None)``
    Parse a project page from a simple repository and return a list of
-   ``DistributionPackage`` objects.  ``html`` is a `str` or `bytes` value to
-   parse.  ``base_url`` is an optional URL (usually the URL of the page being
-   parsed) to join to the front of the URLs returned.  ``from_encoding`` is an
-   optional hint to Beautiful Soup as to the encoding of ``html``.
-   ``project_hint`` is the name of the project whose page is being parsed; it
-   is used to disambiguate the parsing of certain filenames.
+   ``DistributionPackage`` objects.  ``html`` is a `str`, `bytes`, iterable of
+   `str`, or iterable of `bytes` to parse.  ``base_url`` is an optional URL
+   (usually the URL of the page being parsed) to join to the front of the URLs
+   returned.  ``from_encoding`` is the encoding of ``html`` if it is `bytes` or
+   an iterable of `bytes`.  ``project_hint`` is the name of the project whose
+   page is being parsed; it is used to disambiguate the parsing of certain
+   filenames.
 
 ``parse_links(html, base_url=None, from_encoding=None)``
    Parse an HTML page and return a generator of links, where each link is
@@ -176,10 +178,10 @@ Utility Functions
    leading & trailing whitespace removed.  Keys in the attributes `dict` are
    converted to lowercase.
 
-   ``html`` is a `str` or `bytes` value to parse.  ``base_url`` is an optional
-   URL (usually the URL of the page being parsed) to join to the front of the
-   URLs returned.  ``from_encoding`` is an optional hint to Beautiful Soup as
-   to the encoding of ``html``.
+   ``html`` is a `str`, `bytes`, iterable of `str`, or iterable of `bytes` to
+   parse.  ``base_url`` is an optional URL (usually the URL of the page being
+   parsed) to join to the front of the URLs returned.  ``from_encoding`` the
+   encoding of ``html`` if it is `bytes` or an iterable of `bytes`.
 
 ``parse_filename(filename, project_hint=None)``
    Given the filename of a distribution package, returns a triple of the

@@ -17,11 +17,13 @@ __author_email__ = 'pypi-simple@varonathe.org'
 __license__      = 'MIT'
 __url__          = 'https://github.com/jwodder/pypi-simple'
 
+from   codecs                 import getincrementaldecoder
 from   collections            import namedtuple
 import re
-from   bs4                    import BeautifulSoup
 from   packaging.utils        import canonicalize_name as normalize
 import requests
+from   six                    import binary_type, text_type
+from   six.moves.html_parser  import HTMLParser
 from   six.moves.urllib.parse import urljoin, urlunparse, urlparse
 
 __all__ = [
@@ -68,11 +70,7 @@ class PyPISimple(object):
         """
         r = self.s.get(self.endpoint)
         r.raise_for_status()
-        if 'charset' in r.headers.get('content-type', '').lower():
-            charset = r.encoding
-        else:
-            charset = None
-        for name, _ in parse_simple_index(r.content, r.url, charset):
+        for name, _ in parse_simple_index(r.content, r.url, r.encoding):
             yield name
 
     def get_project_files(self, project):
@@ -92,11 +90,7 @@ class PyPISimple(object):
         if r.status_code == 404:
             return []
         r.raise_for_status()
-        if 'charset' in r.headers.get('content-type', '').lower():
-            charset = r.encoding
-        else:
-            charset = None
-        return parse_project_page(r.content, r.url, charset, project)
+        return parse_project_page(r.content, r.url, r.encoding, project)
 
     def get_project_url(self, project):
         """
@@ -179,11 +173,11 @@ def parse_simple_index(html, base_url=None, from_encoding=None):
     name, project URL)`` pairs
 
     :param html: the HTML to parse
-    :type html: str or bytes
+    :type html: str, bytes, an iterable of str, or an iterable of bytes
     :param str base_url: an optional URL to join to the front of the URLs
         returned
-    :param str from_encoding: an optional hint to Beautiful Soup as to the
-        encoding of ``html``
+    :param str from_encoding: the encoding of ``html`` if it is bytes or an
+        iterable of bytes
     """
     for filename, url, _ in parse_links(html, base_url, from_encoding):
         yield (filename, url)
@@ -195,11 +189,11 @@ def parse_project_page(html, base_url=None, from_encoding=None,
     `DistributionPackage` objects
 
     :param html: the HTML to parse
-    :type html: str or bytes
+    :type html: str, bytes, an iterable of str, or an iterable of bytes
     :param str base_url: an optional URL to join to the front of the packages'
         URLs
-    :param str from_encoding: an optional hint to Beautiful Soup as to the
-        encoding of ``html``
+    :param str from_encoding: the encoding of ``html`` if it is bytes or an
+        iterable of bytes
     :param str project_hint: The name of the project whose page is being
         parsed; used to disambiguate the parsing of certain filenames
     """
@@ -217,6 +211,49 @@ def parse_project_page(html, base_url=None, from_encoding=None,
         ))
     return files
 
+
+class LinkParser(HTMLParser):
+    def __init__(self, base_url=None):
+        # HTMLParser is an old-style class in Python 2, so we can't use super()
+        HTMLParser.__init__(self)
+        self.base_url = base_url
+        self.link_tag_stack = []
+        self.finished_links = []
+
+    def fetch_links(self):
+        links = self.finished_links
+        self.finished_links = []
+        return links
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == 'base' and 'href' in attrs:
+            # Note that ``urljoin(None, x) == x``
+            self.base_url = urljoin(self.base_url, attrs['href'])
+        elif tag == 'a' and 'href' in attrs:
+            attrs['#text'] = ''
+            self.link_tag_stack.append(attrs)
+
+    def handle_endtag(self, tag):
+        if tag == 'a' and self.link_tag_stack:
+            attrs = self.link_tag_stack.pop()
+            text = attrs.pop('#text')
+            self.finished_links.append((
+                text.strip(),
+                urljoin(self.base_url, attrs['href']),
+                attrs,
+            ))
+
+    def handle_data(self, data):
+        if self.link_tag_stack:
+            self.link_tag_stack[-1]['#text'] += data
+
+    def close(self):
+        while self.link_tag_stack:
+            self.handle_endtag('a')
+        HTMLParser.close(self)
+
+
 def parse_links(html, base_url=None, from_encoding=None):
     """
     Parse an HTML page and return a generator of links, where each link is
@@ -228,23 +265,30 @@ def parse_links(html, base_url=None, from_encoding=None):
     Keys in the attributes `dict` are converted to lowercase.
 
     :param html: the HTML to parse
-    :type html: str or bytes
+    :type html: str, bytes, an iterable of str, or an iterable of bytes
     :param str base_url: an optional URL to join to the front of the URLs
         returned
-    :param str from_encoding: an optional hint to Beautiful Soup as to the
-        encoding of ``html``
+    :param str from_encoding: the encoding of ``html`` if it is bytes or an
+        iterable of bytes
     """
-    soup = BeautifulSoup(html, 'html.parser', from_encoding=from_encoding)
-    base_tag = soup.find('base', href=True)
-    if base_tag is not None:
-        base_url = urljoin(base_url, base_tag['href'])
-    # Note that ``urljoin(None, x) == x``
-    for link in soup.find_all('a', href=True):
-        yield (
-            ''.join(link.strings).strip(),
-            urljoin(base_url, link['href']),
-            link.attrs,
-        )
+    if isinstance(html, (binary_type, text_type)):
+        html = [html]
+    if from_encoding is not None:
+        html = iterdecode(html, from_encoding)
+    parser = LinkParser(base_url=base_url)
+    for piece in html:
+        parser.feed(piece)
+        for link in parser.fetch_links():
+            yield link
+    parser.close()
+    for link in parser.fetch_links():
+        yield link
+
+def iterdecode(iterable, encoding):
+    decoder = getincrementaldecoder(encoding)()
+    for blob in iterable:
+        yield decoder.decode(blob)
+    yield decoder.decode(b'', True)
 
 PROJECT_NAME = r'[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?'
 PROJECT_NAME_NODASH = r'[A-Za-z0-9](?:[A-Za-z0-9._]*[A-Za-z0-9])?'
