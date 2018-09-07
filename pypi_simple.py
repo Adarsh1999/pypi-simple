@@ -39,6 +39,9 @@ __all__ = [
 #: The base URL for PyPI's simple API
 PYPI_SIMPLE_ENDPOINT = 'https://pypi.org/simple/'
 
+#: Argument to `requests.Response.iter_content()`
+CHUNK_SIZE = 65535
+
 class PyPISimple(object):
     """
     A client for fetching package information from a Python simple package
@@ -68,9 +71,13 @@ class PyPISimple(object):
             PyPI's project index file is very large and takes several seconds
             to parse.  Use this method sparingly.
         """
-        r = self.s.get(self.endpoint)
+        r = self.s.get(self.endpoint, stream=True)
         r.raise_for_status()
-        for name, _ in parse_simple_index(r.content, r.url, r.encoding):
+        for name, _ in parse_simple_index(
+            r.iter_content(CHUNK_SIZE),
+            r.url,
+            r.encoding,
+        ):
             yield name
 
     def get_project_files(self, project):
@@ -86,11 +93,16 @@ class PyPISimple(object):
             The name does not need to be normalized.
         """
         url = self.get_project_url(project)
-        r = self.s.get(url)
+        r = self.s.get(url, stream=True)
         if r.status_code == 404:
             return []
         r.raise_for_status()
-        return parse_project_page(r.content, r.url, r.encoding, project)
+        return parse_project_page(
+            r.iter_content(CHUNK_SIZE),
+            r.url,
+            r.encoding,
+            project,
+        )
 
     def get_project_url(self, project):
         """
