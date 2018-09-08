@@ -22,7 +22,7 @@ from   collections            import namedtuple
 import re
 from   packaging.utils        import canonicalize_name as normalize
 import requests
-from   six                    import binary_type, text_type
+from   six                    import PY2, binary_type, text_type
 from   six.moves.html_parser  import HTMLParser
 from   six.moves.urllib.parse import urljoin, urlunparse, urlparse
 
@@ -226,8 +226,12 @@ def parse_project_page(html, base_url=None, from_encoding=None,
 
 class LinkParser(HTMLParser):
     def __init__(self, base_url=None):
-        # HTMLParser is an old-style class in Python 2, so we can't use super()
-        HTMLParser.__init__(self)
+        if PY2:
+            # HTMLParser is an old-style class in Python 2, so we can't use
+            # super()
+            HTMLParser.__init__(self)
+        else:
+            super().__init__(convert_charrefs=True)
         self.base_url = base_url
         self.link_tag_stack = []
         self.finished_links = []
